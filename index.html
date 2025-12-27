@@ -30,8 +30,9 @@
     </script>
     <style>
         * { box-sizing: border-box; }
-        html, body { height: 100%; margin: 0; overflow: hidden; }
-        body { font-family: 'Space Mono', monospace; background: linear-gradient(135deg, #0D1B2A 0%, #1B263B 50%, #0D1B2A 100%); }
+        html, body { min-height: 100%; margin: 0; }
+        body { font-family: 'Space Mono', monospace; background: linear-gradient(135deg, #0D1B2A 0%, #1B263B 50%, #0D1B2A 100%); background-attachment: fixed; }
+        body.modal-open { overflow: hidden; }
         .state-path { stroke: #415A77; stroke-width: 0.5; fill: #1B263B; cursor: pointer; transition: all 0.15s ease; }
         .state-path:hover { fill: #415A77; stroke: #FF5722; stroke-width: 2; }
         .state-path.visited { fill: #FF5722; stroke: #E0E1DD; }
@@ -90,19 +91,18 @@
         .app-container {
             display: flex;
             flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
+            min-height: 100vh;
         }
         .main-content {
             flex: 1;
-            min-height: 0;
+            min-height: 400px;
             display: flex;
             flex-direction: column;
             padding: 0.5rem 1rem 1rem;
         }
         .map-container {
             flex: 1;
-            min-height: 0;
+            min-height: 400px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -111,6 +111,18 @@
             border: 1px solid #415A77;
             overflow: hidden;
             position: relative;
+        }
+        @media (min-width: 768px) {
+            .app-container {
+                height: 100vh;
+                overflow: hidden;
+            }
+            .main-content {
+                min-height: 0;
+            }
+            .map-container {
+                min-height: 0;
+            }
         }
         #mapSvg {
             width: 100%;
@@ -395,12 +407,14 @@
             // Start mapping button - close modal
             startMappingBtn.addEventListener('click', () => {
                 welcomeModal.classList.add('hidden');
+                document.body.classList.remove('modal-open');
                 localStorage.setItem('hasVisited', 'true');
             });
         }
 
         function showWelcomeModal() {
             document.getElementById('welcomeModal').classList.remove('hidden');
+            document.body.classList.add('modal-open');
         }
 
         function updateHeaderWithName() {
