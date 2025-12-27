@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visited States</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'electric': '#FF5722',
+                        'midnight': '#0D1B2A',
+                        'steel': '#1B263B',
+                        'ocean': '#415A77',
+                        'fog': '#778DA9',
+                        'cream': '#E0E1DD'
+                    },
+                    fontFamily: {
+                        'display': ['Bebas Neue', 'sans-serif'],
+                        'mono': ['Space Mono', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; overflow: hidden; }
+        body { font-family: 'Space Mono', monospace; background: linear-gradient(135deg, #0D1B2A 0%, #1B263B 50%, #0D1B2A 100%); }
+        .state-path { stroke: #415A77; stroke-width: 0.5; fill: #1B263B; cursor: pointer; transition: all 0.15s ease; }
+        .state-path:hover { fill: #415A77; stroke: #FF5722; stroke-width: 2; }
+        .state-path.visited { fill: #FF5722; stroke: #E0E1DD; }
+        .state-path.visited:hover { fill: #ff7a50; }
+        .toggle-switch { position: relative; width: 60px; height: 32px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; inset: 0; background-color: #1B263B; border: 2px solid #415A77; border-radius: 32px; transition: 0.3s; }
+        .toggle-slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 3px; bottom: 3px; background-color: #778DA9; border-radius: 50%; transition: 0.3s; }
+        input:checked + .toggle-slider { background-color: #FF5722; border-color: #FF5722; }
+        input:checked + .toggle-slider:before { transform: translateX(28px); background-color: white; }
+        .state-item { transition: all 0.2s ease; }
+        .state-item:hover { transform: translateX(4px); }
+        .counter-glow { text-shadow: 0 0 40px rgba(255, 87, 34, 0.5); }
+        .btn-glow:hover { box-shadow: 0 0 30px rgba(255, 87, 34, 0.4); }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: #1B263B; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #415A77; border-radius: 3px; }
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .share-toast { animation: slideUp 0.3s ease-out; }
+        .shared-banner { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .tooltip {
+            position: fixed;
+            background: #FF5722;
+            color: #0D1B2A;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.25rem;
+            letter-spacing: 0.05em;
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            box-shadow: 0 4px 20px rgba(255, 87, 34, 0.4);
+            white-space: nowrap;
+        }
+        .tooltip.visible { opacity: 1; }
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 8px solid transparent;
+            border-top-color: #FF5722;
+        }
+        
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .main-content {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 0.5rem 1rem 1rem;
+        }
+        .map-container {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(27, 38, 59, 0.5);
+            border-radius: 0.5rem;
+            border: 1px solid #415A77;
+            overflow: hidden;
+            position: relative;
+        }
+        #mapSvg {
+            width: 100%;
+            height: 100%;
+        }
+        .loading {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            color: #778DA9;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #1B263B;
+            border-top-color: #FF5722;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="text-cream">
+    <div class="app-container">
+        <!-- Shared Banner -->
+        <div id="sharedBanner" class="hidden shared-banner bg-ocean border-b-2 border-electric">
+            <div class="container mx-auto px-4 py-2 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <svg class="w-5 h-5 text-electric" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    <span class="text-sm">Viewing someone else's visited states</span>
+                </div>
+                <button id="startOwnBtn" class="bg-electric text-midnight px-4 py-1.5 text-sm font-bold uppercase rounded hover:bg-cream transition-all">Start My Own</button>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <header class="bg-midnight/95 backdrop-blur-md border-b-2 border-electric flex-shrink-0">
+            <div class="container mx-auto px-4 py-3">
+                <div class="flex items-center justify-between">
+                    <h1 class="font-display text-2xl md:text-3xl tracking-wide text-electric">VISITED STATES</h1>
+                    <button id="shareBtn" class="flex items-center gap-2 bg-electric text-midnight px-4 py-2 font-bold uppercase text-sm hover:bg-cream transition-all btn-glow rounded">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                        <span class="hidden sm:inline">Share</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Bar -->
+        <div class="bg-steel border-b border-ocean flex-shrink-0">
+            <div class="container mx-auto px-4 py-3">
+                <div class="flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="text-center">
+                            <div id="visitedCount" class="font-display text-4xl md:text-5xl text-electric counter-glow">0</div>
+                            <div class="text-fog text-xs uppercase tracking-widest">Visited</div>
+                        </div>
+                        <div class="text-3xl text-ocean font-display">/</div>
+                        <div class="text-center">
+                            <div class="font-display text-4xl md:text-5xl text-fog">50</div>
+                            <div class="text-fog text-xs uppercase tracking-widest">States</div>
+                        </div>
+                    </div>
+                    <div id="progressRing" class="relative w-14 h-14 md:w-16 md:h-16">
+                        <svg class="w-full h-full transform -rotate-90">
+                            <circle cx="50%" cy="50%" r="45%" stroke="#1B263B" stroke-width="6" fill="none"/>
+                            <circle id="progressCircle" cx="50%" cy="50%" r="45%" stroke="#FF5722" stroke-width="6" fill="none" stroke-dasharray="283" stroke-dashoffset="283" stroke-linecap="round"/>
+                        </svg>
+                        <div id="progressPercent" class="absolute inset-0 flex items-center justify-center font-display text-base text-electric">0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- View Toggle -->
+        <div class="container mx-auto px-4 py-2 flex-shrink-0">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <button id="mapViewBtn" class="flex items-center gap-2 px-3 py-1.5 bg-electric text-midnight font-bold uppercase text-sm rounded transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                        Map
+                    </button>
+                    <button id="listViewBtn" class="flex items-center gap-2 px-3 py-1.5 bg-steel text-fog font-bold uppercase text-sm rounded transition-all hover:bg-ocean">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                        List
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-fog text-xs uppercase tracking-wide">Show Unvisited</span>
+                    <label class="toggle-switch"><input type="checkbox" id="showUnvisited"><span class="toggle-slider"></span></label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div id="mapView" class="map-container">
+                <div id="loadingIndicator" class="loading">
+                    <div class="spinner"></div>
+                    <span>Loading map...</span>
+                </div>
+                <svg id="mapSvg" viewBox="0 0 960 600" preserveAspectRatio="xMidYMid meet"></svg>
+            </div>
+            <div id="listView" class="hidden flex-1 min-h-0 bg-steel/50 rounded-lg border border-ocean overflow-hidden">
+                <div id="statesList" class="h-full overflow-y-auto scrollbar-thin"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Tooltip -->
+    <div id="tooltip" class="tooltip"></div>
+
+    <!-- Toast -->
+    <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-electric text-midnight px-6 py-3 rounded-lg font-bold shadow-lg share-toast z-50">
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            <span id="toastText">Link copied to clipboard!</span>
+        </div>
+    </div>
+
+    <script>
+        const states = [
+            { abbr: 'AL', name: 'Alabama' }, { abbr: 'AK', name: 'Alaska' }, { abbr: 'AZ', name: 'Arizona' },
+            { abbr: 'AR', name: 'Arkansas' }, { abbr: 'CA', name: 'California' }, { abbr: 'CO', name: 'Colorado' },
+            { abbr: 'CT', name: 'Connecticut' }, { abbr: 'DE', name: 'Delaware' }, { abbr: 'FL', name: 'Florida' },
+            { abbr: 'GA', name: 'Georgia' }, { abbr: 'HI', name: 'Hawaii' }, { abbr: 'ID', name: 'Idaho' },
+            { abbr: 'IL', name: 'Illinois' }, { abbr: 'IN', name: 'Indiana' }, { abbr: 'IA', name: 'Iowa' },
+            { abbr: 'KS', name: 'Kansas' }, { abbr: 'KY', name: 'Kentucky' }, { abbr: 'LA', name: 'Louisiana' },
+            { abbr: 'ME', name: 'Maine' }, { abbr: 'MD', name: 'Maryland' }, { abbr: 'MA', name: 'Massachusetts' },
+            { abbr: 'MI', name: 'Michigan' }, { abbr: 'MN', name: 'Minnesota' }, { abbr: 'MS', name: 'Mississippi' },
+            { abbr: 'MO', name: 'Missouri' }, { abbr: 'MT', name: 'Montana' }, { abbr: 'NE', name: 'Nebraska' },
+            { abbr: 'NV', name: 'Nevada' }, { abbr: 'NH', name: 'New Hampshire' }, { abbr: 'NJ', name: 'New Jersey' },
+            { abbr: 'NM', name: 'New Mexico' }, { abbr: 'NY', name: 'New York' }, { abbr: 'NC', name: 'North Carolina' },
+            { abbr: 'ND', name: 'North Dakota' }, { abbr: 'OH', name: 'Ohio' }, { abbr: 'OK', name: 'Oklahoma' },
+            { abbr: 'OR', name: 'Oregon' }, { abbr: 'PA', name: 'Pennsylvania' }, { abbr: 'RI', name: 'Rhode Island' },
+            { abbr: 'SC', name: 'South Carolina' }, { abbr: 'SD', name: 'South Dakota' }, { abbr: 'TN', name: 'Tennessee' },
+            { abbr: 'TX', name: 'Texas' }, { abbr: 'UT', name: 'Utah' }, { abbr: 'VT', name: 'Vermont' },
+            { abbr: 'VA', name: 'Virginia' }, { abbr: 'WA', name: 'Washington' }, { abbr: 'WV', name: 'West Virginia' },
+            { abbr: 'WI', name: 'Wisconsin' }, { abbr: 'WY', name: 'Wyoming' }
+        ];
+
+        const stateIdToAbbr = {
+            '01': 'AL', '02': 'AK', '04': 'AZ', '05': 'AR', '06': 'CA', '08': 'CO', '09': 'CT',
+            '10': 'DE', '12': 'FL', '13': 'GA', '15': 'HI', '16': 'ID', '17': 'IL', '18': 'IN',
+            '19': 'IA', '20': 'KS', '21': 'KY', '22': 'LA', '23': 'ME', '24': 'MD', '25': 'MA',
+            '26': 'MI', '27': 'MN', '28': 'MS', '29': 'MO', '30': 'MT', '31': 'NE', '32': 'NV',
+            '33': 'NH', '34': 'NJ', '35': 'NM', '36': 'NY', '37': 'NC', '38': 'ND', '39': 'OH',
+            '40': 'OK', '41': 'OR', '42': 'PA', '44': 'RI', '45': 'SC', '46': 'SD', '47': 'TN',
+            '48': 'TX', '49': 'UT', '50': 'VT', '51': 'VA', '53': 'WA', '54': 'WV', '55': 'WI', '56': 'WY'
+        };
+
+        let visitedStates = new Set();
+        let isViewingShared = false;
+        const tooltip = document.getElementById('tooltip');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', init);
+
+        function init() {
+            console.log('Initializing app...');
+            
+            // Load from URL params or localStorage
+            const params = new URLSearchParams(window.location.search);
+            const sharedStates = params.get('states');
+            
+            if (sharedStates) {
+                isViewingShared = true;
+                document.getElementById('sharedBanner').classList.remove('hidden');
+                sharedStates.split(',').forEach(s => visitedStates.add(s));
+            } else {
+                const saved = localStorage.getItem('visitedStates');
+                if (saved) {
+                    JSON.parse(saved).forEach(s => visitedStates.add(s));
+                }
+            }
+            
+            loadMap();
+            updateUI();
+            setupEventListeners();
+        }
+
+        async function loadMap() {
+            console.log('Loading map data...');
+            const loadingEl = document.getElementById('loadingIndicator');
+            
+            try {
+                // Check if D3 is loaded
+                if (typeof d3 === 'undefined') {
+                    throw new Error('D3 library not loaded');
+                }
+                
+                const response = await fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json');
+                if (!response.ok) throw new Error('Failed to fetch map data');
+                
+                const us = await response.json();
+                console.log('Map data loaded, rendering...');
+                
+                const statesGeo = topojson.feature(us, us.objects.states);
+                renderMap(statesGeo);
+                
+                loadingEl.style.display = 'none';
+            } catch (e) {
+                console.error('Map loading error:', e);
+                loadingEl.innerHTML = `<span class="text-electric">Failed to load map. <button onclick="loadMap()" class="underline">Retry</button></span>`;
+            }
+        }
+
+        function renderMap(statesGeo) {
+            const svg = d3.select('#mapSvg');
+            svg.selectAll('*').remove();
+            
+            const width = 960, height = 600;
+            const projection = d3.geoAlbersUsa().scale(1280).translate([width / 2, height / 2]);
+            const path = d3.geoPath().projection(projection);
+
+            svg.selectAll('path')
+                .data(statesGeo.features)
+                .join('path')
+                .attr('d', path)
+                .attr('class', d => {
+                    const abbr = stateIdToAbbr[d.id];
+                    return `state-path ${visitedStates.has(abbr) ? 'visited' : ''}`;
+                })
+                .attr('data-state', d => stateIdToAbbr[d.id])
+                .on('click', function(event, d) {
+                    if (isViewingShared) return;
+                    const abbr = stateIdToAbbr[d.id];
+                    toggleState(abbr);
+                    d3.select(this).classed('visited', visitedStates.has(abbr));
+                })
+                .on('mouseenter', function(event, d) {
+                    const abbr = stateIdToAbbr[d.id];
+                    const state = states.find(s => s.abbr === abbr);
+                    if (state) {
+                        const isVisited = visitedStates.has(abbr);
+                        tooltip.innerHTML = `${state.name} ${isVisited ? '✓' : ''}`;
+                        tooltip.classList.add('visible');
+                    }
+                })
+                .on('mousemove', function(event) {
+                    tooltip.style.left = event.clientX + 'px';
+                    tooltip.style.top = (event.clientY - 50) + 'px';
+                    tooltip.style.transform = 'translateX(-50%)';
+                })
+                .on('mouseleave', function() {
+                    tooltip.classList.remove('visible');
+                });
+                
+            console.log('Map rendered successfully');
+        }
+
+        function toggleState(abbr) {
+            if (isViewingShared) return;
+            if (visitedStates.has(abbr)) {
+                visitedStates.delete(abbr);
+            } else {
+                visitedStates.add(abbr);
+            }
+            saveState();
+            updateUI();
+        }
+
+        function saveState() {
+            localStorage.setItem('visitedStates', JSON.stringify([...visitedStates]));
+        }
+
+        function updateUI() {
+            const count = visitedStates.size;
+            document.getElementById('visitedCount').textContent = count;
+            
+            const percent = Math.round((count / 50) * 100);
+            document.getElementById('progressPercent').textContent = percent + '%';
+            const circle = document.getElementById('progressCircle');
+            const offset = 283 - (283 * percent / 100);
+            circle.style.strokeDashoffset = offset;
+            
+            renderList();
+        }
+
+        function renderList() {
+            const showUnvisited = document.getElementById('showUnvisited').checked;
+            const filtered = states.filter(s => showUnvisited ? !visitedStates.has(s.abbr) : visitedStates.has(s.abbr));
+            
+            let html = '';
+            if (filtered.length === 0) {
+                html = `<div class="p-8 text-center text-fog">${showUnvisited ? "You've visited all states!" : 'No states visited yet. Click on the map to add some!'}</div>`;
+            } else {
+                filtered.forEach(state => {
+                    const isVisited = visitedStates.has(state.abbr);
+                    html += `
+                        <div class="state-item flex items-center justify-between p-4 border-b border-ocean hover:bg-ocean/30 cursor-pointer" onclick="toggleState('${state.abbr}')">
+                            <div class="flex items-center gap-4">
+                                <span class="w-12 h-12 rounded-lg flex items-center justify-center font-display text-xl ${isVisited ? 'bg-electric text-midnight' : 'bg-steel text-fog'}">${state.abbr}</span>
+                                <span class="font-bold">${state.name}</span>
+                            </div>
+                            <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center ${isVisited ? 'border-electric bg-electric' : 'border-fog'}">
+                                ${isVisited ? '<svg class="w-4 h-4 text-midnight" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>' : ''}
+                            </div>
+                        </div>`;
+                });
+            }
+            document.getElementById('statesList').innerHTML = html;
+        }
+
+        function setupEventListeners() {
+            document.getElementById('mapViewBtn').addEventListener('click', () => {
+                document.getElementById('mapView').classList.remove('hidden');
+                document.getElementById('listView').classList.add('hidden');
+                document.getElementById('mapViewBtn').classList.add('bg-electric', 'text-midnight');
+                document.getElementById('mapViewBtn').classList.remove('bg-steel', 'text-fog');
+                document.getElementById('listViewBtn').classList.remove('bg-electric', 'text-midnight');
+                document.getElementById('listViewBtn').classList.add('bg-steel', 'text-fog');
+            });
+
+            document.getElementById('listViewBtn').addEventListener('click', () => {
+                document.getElementById('listView').classList.remove('hidden');
+                document.getElementById('mapView').classList.add('hidden');
+                document.getElementById('listViewBtn').classList.add('bg-electric', 'text-midnight');
+                document.getElementById('listViewBtn').classList.remove('bg-steel', 'text-fog');
+                document.getElementById('mapViewBtn').classList.remove('bg-electric', 'text-midnight');
+                document.getElementById('mapViewBtn').classList.add('bg-steel', 'text-fog');
+            });
+
+            document.getElementById('showUnvisited').addEventListener('change', renderList);
+
+            document.getElementById('shareBtn').addEventListener('click', () => {
+                const statesParam = [...visitedStates].join(',');
+                const url = `${window.location.origin}${window.location.pathname}?states=${statesParam}`;
+                navigator.clipboard.writeText(url).then(() => {
+                    showToast('Link copied to clipboard!');
+                }).catch(() => {
+                    prompt('Copy this link:', url);
+                });
+            });
+
+            const startOwnBtn = document.getElementById('startOwnBtn');
+            if (startOwnBtn) {
+                startOwnBtn.addEventListener('click', () => {
+                    window.location.href = window.location.pathname;
+                });
+            }
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastText').textContent = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+    </script>
+</body>
+</html>
