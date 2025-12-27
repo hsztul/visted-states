@@ -53,6 +53,12 @@
         .share-toast { animation: slideUp 0.3s ease-out; }
         .shared-banner { animation: fadeIn 0.5s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Modal animations */
+        @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes modalSlideIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        #welcomeModal:not(.hidden) { animation: modalFadeIn 0.3s ease-out; }
+        #welcomeModal:not(.hidden) > div > div { animation: modalSlideIn 0.3s ease-out; }
         
         .tooltip {
             position: fixed;
@@ -227,6 +233,53 @@
         </div>
     </div>
 
+    <!-- Welcome Modal -->
+    <div id="welcomeModal" class="hidden fixed inset-0 z-[100]">
+        <!-- Backdrop with blur -->
+        <div class="absolute inset-0 bg-midnight/80 backdrop-blur-md"></div>
+
+        <!-- Modal Content -->
+        <div class="relative flex items-center justify-center min-h-screen p-4">
+            <div class="bg-steel border-2 border-electric rounded-lg shadow-2xl max-w-lg w-full p-8 transform transition-all">
+                <!-- Welcome Screen -->
+                <div id="welcomeScreen" class="text-center">
+                    <h2 class="font-display text-4xl text-electric mb-4">WELCOME!</h2>
+                    <p class="text-cream text-lg mb-8">Track all the states you've visited across the United States</p>
+                    <button id="getStartedBtn" class="w-full bg-electric text-midnight px-6 py-3 font-bold uppercase text-lg hover:bg-cream transition-all btn-glow rounded">
+                        Get Started
+                    </button>
+                </div>
+
+                <!-- Name Input Screen -->
+                <div id="nameScreen" class="hidden">
+                    <h2 class="font-display text-3xl text-electric mb-6 text-center">WHAT'S YOUR NAME?</h2>
+                    <input
+                        type="text"
+                        id="nameInput"
+                        placeholder="Enter your name"
+                        class="w-full bg-midnight border-2 border-ocean text-cream px-4 py-3 rounded font-mono text-lg mb-6 focus:border-electric focus:outline-none transition-all"
+                        maxlength="30"
+                    />
+                    <button id="submitNameBtn" class="w-full bg-electric text-midnight px-6 py-3 font-bold uppercase text-lg hover:bg-cream transition-all btn-glow rounded">
+                        Continue
+                    </button>
+                </div>
+
+                <!-- Instructions Screen -->
+                <div id="instructionsScreen" class="hidden text-center">
+                    <h2 class="font-display text-3xl text-electric mb-4">HI <span id="greetingName"></span>!</h2>
+                    <div class="text-cream text-lg mb-6 space-y-3">
+                        <p>Click on all the states you've been to on the map</p>
+                        <p>When you're done, share your map with a friend!</p>
+                    </div>
+                    <button id="startMappingBtn" class="w-full bg-electric text-midnight px-6 py-3 font-bold uppercase text-lg hover:bg-cream transition-all btn-glow rounded">
+                        Start Mapping
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const states = [
             { abbr: 'AL', name: 'Alabama' }, { abbr: 'AK', name: 'Alaska' }, { abbr: 'AZ', name: 'Arizona' },
@@ -260,6 +313,7 @@
 
         let visitedStates = new Set();
         let isViewingShared = false;
+        let userName = '';
         const tooltip = document.getElementById('tooltip');
 
         // Initialize
@@ -267,11 +321,11 @@
 
         function init() {
             console.log('Initializing app...');
-            
+
             // Load from URL params or localStorage
             const params = new URLSearchParams(window.location.search);
             const sharedStates = params.get('states');
-            
+
             if (sharedStates) {
                 isViewingShared = true;
                 document.getElementById('sharedBanner').classList.remove('hidden');
@@ -281,11 +335,81 @@
                 if (saved) {
                     JSON.parse(saved).forEach(s => visitedStates.add(s));
                 }
+
+                // Load user name
+                const savedName = localStorage.getItem('userName');
+                if (savedName) {
+                    userName = savedName;
+                    updateHeaderWithName();
+                }
             }
-            
+
             loadMap();
             updateUI();
             setupEventListeners();
+            setupWelcomeModal();
+
+            // Show welcome modal for first-time visitors
+            if (!isViewingShared && !localStorage.getItem('hasVisited')) {
+                showWelcomeModal();
+            }
+        }
+
+        function setupWelcomeModal() {
+            const welcomeModal = document.getElementById('welcomeModal');
+            const welcomeScreen = document.getElementById('welcomeScreen');
+            const nameScreen = document.getElementById('nameScreen');
+            const instructionsScreen = document.getElementById('instructionsScreen');
+            const getStartedBtn = document.getElementById('getStartedBtn');
+            const submitNameBtn = document.getElementById('submitNameBtn');
+            const startMappingBtn = document.getElementById('startMappingBtn');
+            const nameInput = document.getElementById('nameInput');
+
+            // Get Started button - show name screen
+            getStartedBtn.addEventListener('click', () => {
+                welcomeScreen.classList.add('hidden');
+                nameScreen.classList.remove('hidden');
+                nameInput.focus();
+            });
+
+            // Submit name button - show instructions screen
+            submitNameBtn.addEventListener('click', () => {
+                const name = nameInput.value.trim();
+                if (name) {
+                    userName = name;
+                    localStorage.setItem('userName', userName);
+                    document.getElementById('greetingName').textContent = userName.toUpperCase();
+                    nameScreen.classList.add('hidden');
+                    instructionsScreen.classList.remove('hidden');
+                    updateHeaderWithName();
+                }
+            });
+
+            // Allow Enter key to submit name
+            nameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    submitNameBtn.click();
+                }
+            });
+
+            // Start mapping button - close modal
+            startMappingBtn.addEventListener('click', () => {
+                welcomeModal.classList.add('hidden');
+                localStorage.setItem('hasVisited', 'true');
+            });
+        }
+
+        function showWelcomeModal() {
+            document.getElementById('welcomeModal').classList.remove('hidden');
+        }
+
+        function updateHeaderWithName() {
+            const headerTitle = document.querySelector('header h1');
+            if (userName) {
+                headerTitle.textContent = `${userName.toUpperCase()}'S VISITED STATES`;
+            } else {
+                headerTitle.textContent = 'VISITED STATES';
+            }
         }
 
         async function loadMap() {
