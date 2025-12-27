@@ -169,6 +169,10 @@
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
                         <span class="hidden sm:inline">Share</span>
                     </button>
+                    <button id="trackYourOwnBtn" class="hidden flex items-center gap-2 bg-electric text-midnight px-4 py-2 font-bold uppercase text-sm hover:bg-cream transition-all btn-glow rounded">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span class="hidden sm:inline">Track Your Own</span>
+                    </button>
                 </div>
             </div>
         </header>
@@ -255,11 +259,14 @@
             <div class="bg-steel border-2 border-electric rounded-lg shadow-2xl max-w-lg w-full p-8 transform transition-all">
                 <div class="text-center">
                     <h2 class="font-display text-4xl text-electric mb-4">HI THERE!</h2>
-                    <p class="text-cream text-lg mb-8">
+                    <p class="text-cream text-lg mb-6">
                         You're viewing <span id="sharedOwnerName" class="text-electric font-bold"></span>'s visited states
                     </p>
-                    <button id="trackMyOwnBtn" class="w-full bg-electric text-midnight px-6 py-3 font-bold uppercase text-lg hover:bg-cream transition-all btn-glow rounded">
-                        Track My Own States
+                    <p class="text-fog text-base mb-8">
+                        Click "Track Your Own" in the header to start tracking your own states!
+                    </p>
+                    <button id="closeSharedModalBtn" class="w-full bg-electric text-midnight px-6 py-3 font-bold uppercase text-lg hover:bg-cream transition-all btn-glow rounded">
+                        View Map
                     </button>
                 </div>
             </div>
@@ -370,6 +377,10 @@
                     const headerTitle = document.querySelector('header h1');
                     headerTitle.textContent = `${sharedName.toUpperCase()}'S VISITED STATES`;
                 }
+
+                // Hide share button and show track your own button
+                document.getElementById('shareBtn').classList.add('hidden');
+                document.getElementById('trackYourOwnBtn').classList.remove('hidden');
             } else {
                 const saved = localStorage.getItem('visitedStates');
                 if (saved) {
@@ -444,10 +455,11 @@
         }
 
         function setupSharedVisitorModal() {
-            const trackMyOwnBtn = document.getElementById('trackMyOwnBtn');
+            const closeSharedModalBtn = document.getElementById('closeSharedModalBtn');
 
-            trackMyOwnBtn.addEventListener('click', () => {
-                startOwnTracking();
+            closeSharedModalBtn.addEventListener('click', () => {
+                document.getElementById('sharedVisitorModal').classList.add('hidden');
+                document.body.classList.remove('modal-open');
             });
         }
 
@@ -475,6 +487,10 @@
 
             // Reset header
             document.querySelector('header h1').textContent = 'VISITED STATES';
+
+            // Show share button and hide track your own button
+            document.getElementById('shareBtn').classList.remove('hidden');
+            document.getElementById('trackYourOwnBtn').classList.add('hidden');
 
             // Clear the map
             updateUI();
@@ -661,6 +677,13 @@
             const startOwnBtn = document.getElementById('startOwnBtn');
             if (startOwnBtn) {
                 startOwnBtn.addEventListener('click', () => {
+                    startOwnTracking();
+                });
+            }
+
+            const trackYourOwnBtn = document.getElementById('trackYourOwnBtn');
+            if (trackYourOwnBtn) {
+                trackYourOwnBtn.addEventListener('click', () => {
                     startOwnTracking();
                 });
             }
