@@ -30,8 +30,9 @@
     </script>
     <style>
         * { box-sizing: border-box; }
-        html, body { height: 100%; margin: 0; overflow: hidden; }
-        body { font-family: 'Space Mono', monospace; background: linear-gradient(135deg, #0D1B2A 0%, #1B263B 50%, #0D1B2A 100%); }
+        html, body { min-height: 100%; margin: 0; }
+        body { font-family: 'Space Mono', monospace; background: linear-gradient(135deg, #0D1B2A 0%, #1B263B 50%, #0D1B2A 100%); background-attachment: fixed; }
+        body.modal-open { overflow: hidden; }
         .state-path { stroke: #415A77; stroke-width: 0.5; fill: #1B263B; cursor: pointer; transition: all 0.15s ease; }
         .state-path:hover { fill: #415A77; stroke: #FF5722; stroke-width: 2; }
         .state-path.visited { fill: #FF5722; stroke: #E0E1DD; }
@@ -57,8 +58,8 @@
         /* Modal animations */
         @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes modalSlideIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
-        #welcomeModal:not(.hidden) { animation: modalFadeIn 0.3s ease-out; }
-        #welcomeModal:not(.hidden) > div > div { animation: modalSlideIn 0.3s ease-out; }
+        #welcomeModal:not(.hidden), #sharedVisitorModal:not(.hidden) { animation: modalFadeIn 0.3s ease-out; }
+        #welcomeModal:not(.hidden) > div > div, #sharedVisitorModal:not(.hidden) > div > div { animation: modalSlideIn 0.3s ease-out; }
         
         .tooltip {
             position: fixed;
@@ -90,19 +91,18 @@
         .app-container {
             display: flex;
             flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
+            min-height: 100vh;
         }
         .main-content {
             flex: 1;
-            min-height: 0;
+            min-height: 400px;
             display: flex;
             flex-direction: column;
             padding: 0.5rem 1rem 1rem;
         }
         .map-container {
             flex: 1;
-            min-height: 0;
+            min-height: 400px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -111,6 +111,18 @@
             border: 1px solid #415A77;
             overflow: hidden;
             position: relative;
+        }
+        @media (min-width: 768px) {
+            .app-container {
+                height: 100vh;
+                overflow: hidden;
+            }
+            .main-content {
+                min-height: 0;
+            }
+            .map-container {
+                min-height: 0;
+            }
         }
         #mapSvg {
             width: 100%;
@@ -233,6 +245,27 @@
         </div>
     </div>
 
+    <!-- Shared Visitor Modal -->
+    <div id="sharedVisitorModal" class="hidden fixed inset-0 z-[100]">
+        <!-- Backdrop with blur -->
+        <div class="absolute inset-0 bg-midnight/80 backdrop-blur-md"></div>
+
+        <!-- Modal Content -->
+        <div class="relative flex items-center justify-center min-h-screen p-4">
+            <div class="bg-steel border-2 border-electric rounded-lg shadow-2xl max-w-lg w-full p-8 transform transition-all">
+                <div class="text-center">
+                    <h2 class="font-display text-4xl text-electric mb-4">HI THERE!</h2>
+                    <p class="text-cream text-lg mb-8">
+                        You're viewing <span id="sharedOwnerName" class="text-electric font-bold"></span>'s visited states
+                    </p>
+                    <button id="trackMyOwnBtn" class="w-full bg-electric text-midnight px-6 py-3 font-bold uppercase text-lg hover:bg-cream transition-all btn-glow rounded">
+                        Track My Own States
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Welcome Modal -->
     <div id="welcomeModal" class="hidden fixed inset-0 z-[100]">
         <!-- Backdrop with blur -->
@@ -325,11 +358,18 @@
             // Load from URL params or localStorage
             const params = new URLSearchParams(window.location.search);
             const sharedStates = params.get('states');
+            const sharedName = params.get('name');
 
             if (sharedStates) {
                 isViewingShared = true;
                 document.getElementById('sharedBanner').classList.remove('hidden');
                 sharedStates.split(',').forEach(s => visitedStates.add(s));
+
+                // Update header with shared user's name
+                if (sharedName) {
+                    const headerTitle = document.querySelector('header h1');
+                    headerTitle.textContent = `${sharedName.toUpperCase()}'S VISITED STATES`;
+                }
             } else {
                 const saved = localStorage.getItem('visitedStates');
                 if (saved) {
@@ -348,9 +388,12 @@
             updateUI();
             setupEventListeners();
             setupWelcomeModal();
+            setupSharedVisitorModal();
 
-            // Show welcome modal for first-time visitors
-            if (!isViewingShared && !localStorage.getItem('hasVisited')) {
+            // Show appropriate modal for first-time visitors
+            if (isViewingShared && !localStorage.getItem('hasSeenSharedModal')) {
+                showSharedVisitorModal(sharedName || 'Someone');
+            } else if (!isViewingShared && !localStorage.getItem('hasVisited')) {
                 showWelcomeModal();
             }
         }
@@ -395,12 +438,60 @@
             // Start mapping button - close modal
             startMappingBtn.addEventListener('click', () => {
                 welcomeModal.classList.add('hidden');
+                document.body.classList.remove('modal-open');
                 localStorage.setItem('hasVisited', 'true');
             });
         }
 
+        function setupSharedVisitorModal() {
+            const trackMyOwnBtn = document.getElementById('trackMyOwnBtn');
+
+            trackMyOwnBtn.addEventListener('click', () => {
+                startOwnTracking();
+            });
+        }
+
+        function showSharedVisitorModal(ownerName) {
+            document.getElementById('sharedOwnerName').textContent = ownerName.toUpperCase();
+            document.getElementById('sharedVisitorModal').classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            localStorage.setItem('hasSeenSharedModal', 'true');
+        }
+
+        function startOwnTracking() {
+            // Close shared visitor modal
+            document.getElementById('sharedVisitorModal').classList.add('hidden');
+
+            // Clear URL params and reload to own state
+            window.history.replaceState({}, '', window.location.pathname);
+
+            // Reset app state
+            isViewingShared = false;
+            visitedStates.clear();
+            userName = '';
+
+            // Hide shared banner
+            document.getElementById('sharedBanner').classList.add('hidden');
+
+            // Reset header
+            document.querySelector('header h1').textContent = 'VISITED STATES';
+
+            // Clear the map
+            updateUI();
+            const svg = document.querySelector('#mapSvg');
+            if (svg) {
+                svg.querySelectorAll('.state-path').forEach(path => {
+                    path.classList.remove('visited');
+                });
+            }
+
+            // Show welcome modal to start their journey
+            showWelcomeModal();
+        }
+
         function showWelcomeModal() {
             document.getElementById('welcomeModal').classList.remove('hidden');
+            document.body.classList.add('modal-open');
         }
 
         function updateHeaderWithName() {
@@ -558,7 +649,8 @@
 
             document.getElementById('shareBtn').addEventListener('click', () => {
                 const statesParam = [...visitedStates].join(',');
-                const url = `${window.location.origin}${window.location.pathname}?states=${statesParam}`;
+                const nameParam = userName ? `&name=${encodeURIComponent(userName)}` : '';
+                const url = `${window.location.origin}${window.location.pathname}?states=${statesParam}${nameParam}`;
                 navigator.clipboard.writeText(url).then(() => {
                     showToast('Link copied to clipboard!');
                 }).catch(() => {
@@ -569,7 +661,7 @@
             const startOwnBtn = document.getElementById('startOwnBtn');
             if (startOwnBtn) {
                 startOwnBtn.addEventListener('click', () => {
-                    window.location.href = window.location.pathname;
+                    startOwnTracking();
                 });
             }
         }
